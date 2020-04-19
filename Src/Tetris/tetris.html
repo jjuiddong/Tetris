@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+    <title>Tetris</title>
+    <script type="text/javascript" src="../libs/three.js"></script>
+    <script type="text/javascript" src="../libs/stats.js"></script>
+    <script type="text/javascript" src="../libs/dat.gui.js"></script>
+    <script type="text/javascript" src="../libs/CameraControls.js"></script>
+    <style>
+        body {
+            /* set margin to 0 and overflow to hidden, to go fullscreen */
+            margin: 0;
+            overflow: hidden;
+        }
+    </style>
+</head>
+<body>
+
+<div id="Stats-output">
+</div>
+<!-- Div which will hold the Output -->
+<div id="WebGL-output">
+</div>
+
+<!-- Javascript code that runs our Three.js examples -->
+<script type="text/javascript">
+
+    // once everything is loaded, we run our Three.js stuff.
+    function init() {
+
+        // tetris block array
+        // blocks[x:10][y:20]
+        var blocks = new Array();
+        for (var i=0; i < 10; ++i)
+        {
+            blocks[i] = new Array();
+            for (var k=0; k < 20; ++k)
+            {
+                blocks[i][k] = 0;
+            }
+        }
+
+        var incTime = 0;
+        var ctrlType = 0; // control block type
+        var ctrlDir = 0; // control block direction
+        var ctrlPos = new THREE.Vector2(); // control block pos(x,y) {0~9, 0~19}
+        ctrlPos.set(3, 19);
+        var ctrlOldPos = new THREE.Vector2();
+        ctrlOldPos.copy(ctrlPos);
+
+        // control block 4X4X4
+        // ctrlBlock[type][direction][y][x]
+        var ctrlBlocks = [
+            [
+                [[1,1,1,1],
+                 [0,0,0,0],
+                 [0,0,0,0],
+                 [0,0,0,0]],
+
+                [[0,0,0,1],
+                 [0,0,0,1],
+                 [0,0,0,1],
+                 [0,0,0,1]],
+
+                [[1,1,1,1],
+                 [0,0,0,0],
+                 [0,0,0,0],
+                 [0,0,0,0]],
+
+                [[0,0,0,1],
+                 [0,0,0,1],
+                 [0,0,0,1],
+                 [0,0,0,1]],
+            ],
+
+            [
+                [[0,0,0,1],
+                 [0,1,1,1],
+                 [0,0,0,0],
+                 [0,0,0,0]],
+
+                [[0,0,1,0],
+                 [0,0,1,0],
+                 [0,0,1,1],
+                 [0,0,0,0]],
+
+                [[0,1,1,1],
+                 [0,1,0,0],
+                 [0,0,0,0],
+                 [0,0,0,0]],
+
+                [[0,0,1,1],
+                 [0,0,0,1],
+                 [0,0,0,1],
+                 [0,0,0,0]],
+            ],
+
+            [
+                [[0,1,1,1],
+                 [0,0,1,0],
+                 [0,0,0,0],
+                 [0,0,0,0]],
+
+                [[0,0,0,1],
+                 [0,0,1,1],
+                 [0,0,0,1],
+                 [0,0,0,0]],
+
+                [[0,0,1,0],
+                 [0,1,1,1],
+                 [0,0,0,0],
+                 [0,0,0,0]],
+
+                [[0,0,1,0],
+                 [0,0,1,1],
+                 [0,0,1,0],
+                 [0,0,0,0]],
+            ],            
+
+            [
+                [[0,0,1,1],
+                 [0,0,1,1],
+                 [0,0,0,0],
+                 [0,0,0,0]],
+
+                [[0,0,1,1],
+                 [0,0,1,1],
+                 [0,0,0,0],
+                 [0,0,0,0]],
+
+                [[0,0,1,1],
+                 [0,0,1,1],
+                 [0,0,0,0],
+                 [0,0,0,0]],
+
+                [[0,0,1,1],
+                 [0,0,1,1],
+                 [0,0,0,0],
+                 [0,0,0,0]],
+            ],             
+
+        ];
+
+        keys = { LEFT: 37, UP: 38, RIGHT: 39, BOTTOM: 40 };
+
+        var stats = initStats();
+        var scene = new THREE.Scene();
+        var camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+
+        var renderer = new THREE.WebGLRenderer();
+        renderer.setClearColor(new THREE.Color(0xEEEEEE, 1.0));
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMapEnabled = true;
+
+        var planeGeometry = new THREE.PlaneGeometry(50, 50, 1, 1);
+        var planeMaterial = new THREE.MeshLambertMaterial({color: 0xffffff});
+        var plane = new THREE.Mesh(planeGeometry, planeMaterial);
+        plane.receiveShadow = true;
+
+        plane.rotation.x = -0.5 * Math.PI;
+        //plane.position.x = 15;
+        plane.position.x = 0;
+        plane.position.y = -0.01;
+        plane.position.z = 0;
+        scene.add(plane);
+
+        var lookAt = new THREE.Vector3(0,0,-30)
+        camera.position.x = 0;
+        camera.position.y = 20;
+        camera.position.z = 25;
+        camera.lookAt(lookAt);
+
+        var clock = new THREE.Clock();
+
+        var orbit = new THREE.CameraControls(camera);
+        orbit.center = lookAt;
+
+        var ambientLight = new THREE.AmbientLight(0x0c0c0c);
+        scene.add(ambientLight);
+
+        var spotLight = new THREE.SpotLight(0xffffff);
+        spotLight.position.set(60, 60, 60);
+        spotLight.castShadow = true;
+        scene.add(spotLight);
+
+        var points = [];
+        var z = 0.01;
+        for (var i=0; i < 50; ++i)
+        {
+            points.push({x: i, y: 0, z: z});
+            points.push({x: i, y: 50, z: z});
+        }
+        for (var i=0; i < 50; ++i)
+        {
+            points.push({x: 0, y: i, z: z});
+            points.push({x: 50, y: i, z: z});
+        }
+
+        var lines = new THREE.Geometry();
+        //var colors = [];
+        var i = 0;
+        points.forEach(function (e) {
+            lines.vertices.push(new THREE.Vector3(e.x, e.z, e.y));
+            // colors[i] = new THREE.Color(0xffffff);
+            // colors[i].setHSL(e.x / 100 + 0.5, (  e.y * 20 ) / 300, 0.8);
+            i++;
+        });
+
+        var material = new THREE.LineBasicMaterial({
+            opacity: 1.0,
+            linewidth: 1,
+            vertexColors: THREE.VertexColors
+        });
+
+        var line = new THREE.Line(lines, material);
+        line.position.set(-25, 0, -25);
+        line.mode = THREE.Lines;
+        scene.add(line);
+
+        // create block cube
+        var cubes = new Array();
+        for (var x=0; x < 10; ++x)
+        {
+            cubes[x] = new Array();
+            for (var y=0; y < 20; ++y)
+            {
+                var size = 1.;
+                var cubeGeometry = new THREE.BoxGeometry(size,size,size);
+                var cubeMaterial = new THREE.MeshLambertMaterial({color: 0xff0000});
+                var wireFrameMat = new THREE.MeshBasicMaterial({color: 0x000000});
+                wireFrameMat.wireframe = true;
+
+                //var cube = new THREE.Mesh(cubeGeometry, cubeMaterial);
+                var cube  = THREE.SceneUtils.createMultiMaterialObject(cubeGeometry
+                    , [cubeMaterial, wireFrameMat]);
+                cube.castShadow = true;
+
+                var offset = new THREE.Vector3(0.5, 0, -0.5);
+
+                // position the cube
+                cube.position.x = x - 5;
+                cube.position.y = y + 0.5;
+                cube.position.z = 0;
+                cube.position.add(offset);
+
+                // add the cube to the scene
+                scene.add(cube);
+                cubes[x][y] = cube;
+            }
+        }        
+
+        var axesHelper = new THREE.AxisHelper( 5 );
+        axesHelper.material.depthTest = false;
+        scene.add( axesHelper );
+
+        // add the output of the renderer to the html element
+        document.getElementById("WebGL-output").appendChild(renderer.domElement);
+
+        // call the render function
+        var step = 0;
+
+        var controls = new function () {
+            this.rotationSpeed = 0.02;
+            this.bouncingSpeed = 0.03;
+        };
+
+        var gui = new dat.GUI();
+
+        render();
+
+        function render() {
+            stats.update();
+            orbit.update();
+
+            var delta = clock.getDelta();
+            incTime += delta;
+
+            if (incTime > 1)
+            {
+                incTime = 0;
+                ctrlPos.y--;
+
+                if (ctrlPos.y < 0)
+                {
+                    ctrlPos.y = 0;
+                    nextBlock();
+                }
+            }
+            // if (cube.position.y > 0)
+            //     cube.position.y -= delta;
+
+            // show/hide blocks
+            for (var x=0; x < 10; ++x)
+            {
+                for (var y=0; y < 20; ++y)
+                {
+                    if (blocks[x][y] == 0)
+                    {
+                        cubes[x][y].visible = false;
+                    }
+                    else
+                    {
+                        cubes[x][y].visible = true;
+                    }
+                }
+            }
+
+            var isStop = false;
+            var isBlock = false;
+            for (var x=0; x<4 && !isStop; ++x)
+            {
+                for (var y=0; y<4 && !isStop; ++y)
+                {
+                    var posX = ctrlPos.x;
+                    var posY = ctrlPos.y;
+
+                    if (ctrlBlocks[ctrlType][ctrlDir][y][x] != 0)
+                    {
+                        // check limit
+                        if (x + posX < 0)
+                        {
+                            isStop = true;
+                        }
+                        if (x + posX > 9)
+                        {
+                            isStop = true;
+                        }
+                        if (posY - y < 0)
+                        {
+                            isStop = true;
+                            isBlock = true;
+                        }
+                        if (y - posY > 19)
+                        {
+                            isStop = true;
+                        }
+
+                        if (isStop)
+                            break;
+
+                        if (cubes[x + posX][posY - y].visible != 0)
+                        {
+                            isStop = true;
+                            isBlock = true;
+                            break;
+                        }
+
+                        cubes[x + posX][posY - y].visible = true;
+                    }
+                }
+            }
+
+            if (isStop || isBlock)
+            {
+                if (isStop && !isBlock)
+                {
+                    ctrlPos.copy(ctrlOldPos);
+                }
+                else if (isStop && isBlock)
+                {
+                    ctrlPos.copy(ctrlOldPos);
+                    nextBlock();
+                }
+            }
+            else
+            {
+                ctrlOldPos.copy(ctrlPos);
+            }
+
+            // render using requestAnimationFrame
+            requestAnimationFrame(render);
+            renderer.render(scene, camera);
+        }
+
+        function nextBlock() 
+        {
+
+            for (var x=0; x<4; ++x)
+            {
+                for (var y=0; y<4; ++y)
+                {
+                    if (ctrlBlocks[ctrlType][ctrlDir][y][x] != 0)
+                    {
+                        //cubes[x + ctrlPos.x][ctrlPos.y - y].visible = true;
+                        blocks[x + ctrlPos.x][ctrlPos.y - y] = 1;
+                    }
+                }
+            }
+
+            ctrlType = getRandomInt(0, 4);
+            ctrlDir = 0;
+            ctrlPos.set(3,19);
+        }
+
+        function getRandomInt(min, max) 
+        {
+          min = Math.ceil(min);
+          max = Math.floor(max);
+          return Math.floor(Math.random() * (max - min)) + min;
+        }        
+
+        function initStats() {
+
+            var stats = new Stats();
+
+            stats.setMode(0); // 0: fps, 1: ms
+
+            // Align top-left
+            stats.domElement.style.position = 'absolute';
+            stats.domElement.style.left = '0px';
+            stats.domElement.style.top = '0px';
+
+            document.getElementById("Stats-output").appendChild(stats.domElement);
+
+            return stats;
+        }
+
+        function onKeyDown( event ) 
+        {
+            // if ( scope.enabled === false ) return;
+            // if ( scope.userPan === false ) return;
+
+            switch ( event.keyCode ) {
+
+                case keys.UP:
+                    //scope.pan( new THREE.Vector3( 0, 1, 0 ) );
+                    ctrlDir += 1;
+                    ctrlDir %= 4;
+                    break;
+                case keys.BOTTOM:
+                    //scope.pan( new THREE.Vector3( 0, - 1, 0 ) );
+                    break;
+                case keys.LEFT:
+                    ctrlPos.x -= 1;
+                    //scope.pan( new THREE.Vector3( - 1, 0, 0 ) );
+                    break;
+                case keys.RIGHT:
+                    ctrlPos.x += 1;
+                    //scope.pan( new THREE.Vector3( 1, 0, 0 ) );
+                    break;
+              }
+        }
+
+        //this.domElement.addEventListener( 'keydown', onKeyDown, false );
+        document.addEventListener( 'keydown', onKeyDown, false );
+    }
+    window.onload = init;
+
+
+</script>
+</body>
+</html>
