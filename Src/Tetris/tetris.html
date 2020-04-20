@@ -8,6 +8,22 @@
     <script type="text/javascript" src="../libs/stats.js"></script>
     <script type="text/javascript" src="../libs/dat.gui.js"></script>
     <script type="text/javascript" src="../libs/CameraControls.js"></script>
+
+    <script type="text/javascript" src="../libs/postprocessing/ShaderPass.js"></script>
+    <script type="text/javascript" src="../libs/shaders/CopyShader.js"></script>
+    <script type="text/javascript" src="../libs/postprocessing/EffectComposer.js"></script>
+    <script type="text/javascript" src="../libs/postprocessing/RenderPass.js"></script>
+    <script type="text/javascript" src="../libs/postprocessing/MaskPass.js"></script>
+
+    <script type="text/javascript" src="../libs/postprocessing/TexturePass.js"></script>
+    <script type="text/javascript" src="../libs/shaders/ConvolutionShader.js"></script>    
+    <script type="text/javascript" src="../libs/shaders/SobelOperatorShader.js"></script>
+    <script type="text/javascript" src="../libs/shaders/LuminosityShader.js"></script>
+    <script type="text/javascript" src="../libs/postprocessing/AdditivePass.js"></script>
+    <script type="text/javascript" src="../libs/shaders/BlendShader.js"></script>
+    <script type="text/javascript" src="../libs/shaders/AdditiveShader.js"></script>
+    <script type="text/javascript" src="../libs/postprocessing/SavePass.js"></script>
+
     <style>
         body {
             /* set margin to 0 and overflow to hidden, to go fullscreen */
@@ -42,15 +58,17 @@
             }
         }
 
+        var isGameOver = false;
         var incTime = 0;
-        var ctrlType = 0; // control block type
+        var ctrlType = getRandomInt(0,4); // control block type
+        var nextCtrlType = getRandomInt(0,4);
         var ctrlDir = 0; // control block direction
         var ctrlPos = new THREE.Vector2(); // control block pos(x,y) {0~9, 0~19}
         ctrlPos.set(3, 19);
         var ctrlOldPos = new THREE.Vector2();
         ctrlOldPos.copy(ctrlPos);
 
-        // control block 4X4X4
+        // control block 4 X 4 X 4 X 4
         // ctrlBlock[type][direction][y][x]
         var ctrlBlocks = [
             [
@@ -199,12 +217,9 @@
         }
 
         var lines = new THREE.Geometry();
-        //var colors = [];
         var i = 0;
         points.forEach(function (e) {
             lines.vertices.push(new THREE.Vector3(e.x, e.z, e.y));
-            // colors[i] = new THREE.Color(0xffffff);
-            // colors[i].setHSL(e.x / 100 + 0.5, (  e.y * 20 ) / 300, 0.8);
             i++;
         });
 
@@ -226,7 +241,7 @@
             cubes[x] = new Array();
             for (var y=0; y < 20; ++y)
             {
-                var size = 1.;
+                var size = 1;
                 var cubeGeometry = new THREE.BoxGeometry(size,size,size);
                 var cubeMaterial = new THREE.MeshLambertMaterial({color: 0xff0000});
                 var wireFrameMat = new THREE.MeshBasicMaterial({color: 0x000000});
@@ -234,14 +249,14 @@
 
                 //var cube = new THREE.Mesh(cubeGeometry, cubeMaterial);
                 var cube  = THREE.SceneUtils.createMultiMaterialObject(cubeGeometry
-                    , [cubeMaterial, wireFrameMat]);
+                    , [cubeMaterial]);
                 cube.castShadow = true;
 
-                var offset = new THREE.Vector3(0.5, 0, -0.5);
+                var offset = new THREE.Vector3(0.5, 0.5, -0.5);
 
                 // position the cube
                 cube.position.x = x - 5;
-                cube.position.y = y + 0.5;
+                cube.position.y = y;
                 cube.position.z = 0;
                 cube.position.add(offset);
 
@@ -249,14 +264,116 @@
                 scene.add(cube);
                 cubes[x][y] = cube;
             }
-        }        
+        }
 
-        var axesHelper = new THREE.AxisHelper( 5 );
-        axesHelper.material.depthTest = false;
-        scene.add( axesHelper );
+        // create next block cube
+        var nextCubes = new Array();
+        for (var x=0; x < 4; ++x)
+        {
+            nextCubes[x] = new Array();
+            for (var y=0; y < 4; ++y)
+            {
+                var size = 1;
+                var cubeGeometry = new THREE.BoxGeometry(size,size,size);
+                var cubeMaterial = new THREE.MeshLambertMaterial({color: 0xff0000});
+                var wireFrameMat = new THREE.MeshBasicMaterial({color: 0x000000});
+                wireFrameMat.wireframe = true;
+
+                //var cube = new THREE.Mesh(cubeGeometry, cubeMaterial);
+                var cube  = THREE.SceneUtils.createMultiMaterialObject(cubeGeometry
+                    , [cubeMaterial]);
+                cube.castShadow = true;
+
+                var offset = new THREE.Vector3(0.5, 0.5, -0.5);
+
+                // position the cube
+                cube.position.x = x + 6;
+                cube.position.y = y + 14;
+                cube.position.z = 0;
+                cube.position.add(offset);
+
+                // add the cube to the scene
+                scene.add(cube);
+                nextCubes[x][y] = cube;
+            }
+        } 
+
+        // var axesHelper = new THREE.AxisHelper( 5 );
+        // axesHelper.material.depthTest = false;
+        // scene.add( axesHelper );
+
+        // outline
+        {
+            var size = 0.05;
+
+            var cubeGeometry = new THREE.BoxGeometry(10,size,size);
+            var cubeMaterial = new THREE.MeshBasicMaterial({color: 0x0000ff});
+            var bottom  = THREE.SceneUtils.createMultiMaterialObject(cubeGeometry
+                , [cubeMaterial]);
+            bottom.position.x = 0;
+            bottom.position.y = 0.1;
+            bottom.position.z = 0;
+            scene.add(bottom);
+
+            var left  = THREE.SceneUtils.createMultiMaterialObject(cubeGeometry
+                , [cubeMaterial]);
+            left.position.x = -5;
+            left.position.y = 10;
+            left.position.z = 0;
+            left.scale.x = 2;
+            left.rotation.z = Math.PI / 2;
+            scene.add(left);
+
+            var right  = THREE.SceneUtils.createMultiMaterialObject(cubeGeometry
+                , [cubeMaterial]);
+            right.position.x = 5;
+            right.position.y = 10;
+            right.position.z = 0;
+            right.scale.x = 2;
+            right.rotation.z = Math.PI / 2;
+            scene.add(right);
+        }
 
         // add the output of the renderer to the html element
         document.getElementById("WebGL-output").appendChild(renderer.domElement);
+
+        var renderPass = new THREE.RenderPass(scene, camera);
+
+        var effectCopy = new THREE.ShaderPass(THREE.CopyShader);
+        effectCopy.renderToScreen = true;
+
+        var lum = new THREE.ShaderPass(THREE.LuminosityShader);
+
+        var effectSobel = new THREE.ShaderPass( THREE.SobelOperatorShader );
+        effectSobel.uniforms[ 'resolution_x' ].value = window.innerWidth * window.devicePixelRatio;
+        effectSobel.uniforms[ 'resolution_y' ].value = window.innerHeight * window.devicePixelRatio;
+
+        var composer0 = new THREE.EffectComposer(renderer);
+        composer0.addPass(renderPass);
+        //composer0.addPass(effectCopy);
+
+        var originalScene = new THREE.TexturePass(composer0.renderTarget2);
+
+        var composer1 = new THREE.EffectComposer(renderer);
+        //composer1.addPass(renderPass);
+        composer1.addPass(originalScene);
+        composer1.addPass(lum);
+        composer1.addPass(effectSobel);
+        //composer1.addPass(effectCopy);
+        var edgeScene = new THREE.TexturePass(composer1.renderTarget2);
+
+        // blend pass
+        var additivePass = new THREE.ShaderPass( THREE.BlendShader, 'tDiffuse1' );
+        additivePass.uniforms[ 'tDiffuse2' ].value = composer0.renderTarget2;
+        additivePass.uniforms[ 'srcAlpha1' ].value = 1.;
+        additivePass.uniforms[ 'srcAlpha2' ].value = 1.;
+
+        var composer2 = new THREE.EffectComposer(renderer);
+        composer2.addPass(edgeScene);
+        composer2.addPass(additivePass);
+        // composer2.addPass(bloomPass);
+        composer2.addPass(effectCopy);
+
 
         // call the render function
         var step = 0;
@@ -264,9 +381,13 @@
         var controls = new function () {
             this.rotationSpeed = 0.02;
             this.bouncingSpeed = 0.03;
+            this.effect = true;
         };
 
         var gui = new dat.GUI();
+        gui.add( controls, 'effect' );
+
+        updateNextControlBlocks();
 
         render();
 
@@ -274,48 +395,106 @@
             stats.update();
             orbit.update();
 
-            var delta = clock.getDelta();
-            incTime += delta;
-
-            if (incTime > 1)
+            if (!isGameOver)
             {
-                incTime = 0;
-                ctrlPos.y--;
+                var delta = clock.getDelta();
+                incTime += delta;
 
-                if (ctrlPos.y < 0)
+                var isNextStep = false;
+                if (incTime > 1)
                 {
-                    ctrlPos.y = 0;
+                    incTime = 0;
+                    ctrlPos.y--;
+                    isNextStep = true;
+
+                    if (ctrlPos.y < 0)
+                    {
+                        ctrlPos.y = 0;
+                        nextBlock();
+                    }
+                }
+
+                var rets = checkBlocks();
+                var isLimit = rets.isLimit;
+                var isBlock = rets.isBlock;
+
+                if (isLimit || isBlock)
+                {
+                    ctrlPos.copy(ctrlOldPos);
+                }
+                else
+                {
+                    ctrlOldPos.copy(ctrlPos);
+                }
+
+                updateBlocks();
+                updateControlBlocks(false);
+
+                if (isNextStep && isBlock)
+                {
                     nextBlock();
-                }
+                }                
             }
-            // if (cube.position.y > 0)
-            //     cube.position.y -= delta;
 
-            // show/hide blocks
-            for (var x=0; x < 10; ++x)
+            // render using requestAnimationFrame
+            requestAnimationFrame(render);
+
+            if (controls.effect == true)
             {
-                for (var y=0; y < 20; ++y)
-                {
-                    if (blocks[x][y] == 0)
-                    {
-                        cubes[x][y].visible = false;
-                    }
-                    else
-                    {
-                        cubes[x][y].visible = true;
-                    }
-                }
-            }
+                renderer.autoClear = false;
+                renderer.clear();
 
+                composer0.render();
+                composer1.render();
+                composer2.render();
+            }
+            else
+            {
+                renderer.clear();
+                renderer.render(scene, camera);
+            }       
+            
+        }
+
+
+        // update control block to blocks
+        // spawn next block
+        function nextBlock() 
+        {
+            updateControlBlocks(true);
+            updateBlocks();
+            removeBlocks();
+
+            ctrlType = nextCtrlType;
+            nextCtrlType = getRandomInt(0,4);            
+            ctrlDir = 0;
+            ctrlPos.set(3,19);
+
+            updateNextControlBlocks();
+
+            var rets = checkBlocks();
+            if (rets.isLimit || rets.isBlock)
+            {
+                isGameOver = true;
+            }
+        }
+
+
+        // check is possible control block mapping to blocks
+        // return isLimit?, isBlock?
+        //      isLimit : move xy limit?
+        //      isBlock : move another block location?
+        function checkBlocks()
+        {
             var isStop = false;
             var isBlock = false;
+            var posX = ctrlPos.x; // control block pos
+            var posY = ctrlPos.y;
+
             for (var x=0; x<4 && !isStop; ++x)
             {
                 for (var y=0; y<4 && !isStop; ++y)
                 {
-                    var posX = ctrlPos.x;
-                    var posY = ctrlPos.y;
-
                     if (ctrlBlocks[ctrlType][ctrlDir][y][x] != 0)
                     {
                         // check limit
@@ -340,42 +519,30 @@
                         if (isStop)
                             break;
 
-                        if (cubes[x + posX][posY - y].visible != 0)
+                        // check another block?
+                        if (blocks[x + posX][posY - y] != 0)
                         {
                             isStop = true;
                             isBlock = true;
                             break;
                         }
-
-                        cubes[x + posX][posY - y].visible = true;
                     }
                 }
             }
 
-            if (isStop || isBlock)
-            {
-                if (isStop && !isBlock)
-                {
-                    ctrlPos.copy(ctrlOldPos);
-                }
-                else if (isStop && isBlock)
-                {
-                    ctrlPos.copy(ctrlOldPos);
-                    nextBlock();
-                }
-            }
-            else
-            {
-                ctrlOldPos.copy(ctrlPos);
-            }
-
-            // render using requestAnimationFrame
-            requestAnimationFrame(render);
-            renderer.render(scene, camera);
+            return { 
+                isLimit : isStop,
+                isBlock : isBlock
+            };
         }
 
-        function nextBlock() 
+
+        // update only control block to cubes visible
+        // mappingToBlocks : update ctrl block to blocks?
+        function updateControlBlocks(mappingToBlocks)
         {
+            var posX = ctrlPos.x; // control block pos
+            var posY = ctrlPos.y;
 
             for (var x=0; x<4; ++x)
             {
@@ -383,22 +550,99 @@
                 {
                     if (ctrlBlocks[ctrlType][ctrlDir][y][x] != 0)
                     {
-                        //cubes[x + ctrlPos.x][ctrlPos.y - y].visible = true;
-                        blocks[x + ctrlPos.x][ctrlPos.y - y] = 1;
+                        if ((x + posX < 0)
+                            || (x + posX > 9)
+                            || (posY - y < 0)
+                            || (y - posY > 19))
+                        {
+                            continue;
+                        }
+
+                        cubes[x + posX][posY - y].visible = true;
+
+                        if (mappingToBlocks)
+                        {
+                            blocks[x + posX][posY - y] = 1;
+                        }
                     }
                 }
             }
-
-            ctrlType = getRandomInt(0, 4);
-            ctrlDir = 0;
-            ctrlPos.set(3,19);
         }
+
+
+        // update blocks to cubes visible
+        // show/hide blocks
+        function updateBlocks()
+        {
+            for (var x=0; x < 10; ++x)
+            {
+                for (var y=0; y < 20; ++y)
+                {
+                    if (blocks[x][y] == 0)
+                    {
+                        cubes[x][y].visible = false;
+                    }
+                    else
+                    {
+                        cubes[x][y].visible = true;
+                    }
+                }
+            }
+        }
+
+        function updateNextControlBlocks()
+        {
+            for (var x=0; x<4; ++x)
+            {
+                for (var y=0; y<4; ++y)
+                {
+                    if (ctrlBlocks[nextCtrlType][0][3-y][x] != 0)
+                    {
+                        nextCubes[x][y].visible = true;
+                    }
+                    else
+                    {
+                        nextCubes[x][y].visible = false;
+                    }
+                }
+            }
+        }
+
+        // remove block line
+        function removeBlocks()
+        {
+            for (var y=0; y < 20; ++y)
+            {
+                var cnt = 0;
+                for (var x=0; x < 10; ++x)
+                {
+                    if (blocks[x][y])
+                        ++cnt;
+                }
+
+                // full one line?
+                if (cnt == 10)
+                {
+                    // remove : copy to y -> y-1
+                    for (var cy=y+1; cy<20; ++cy)
+                        for (var cx=0; cx < 10; ++cx)
+                            blocks[cx][cy-1] = blocks[cx][cy];
+
+                    // to line empty
+                    for (var cx=0; cx < 10; ++cx)
+                        blocks[cx][19] = 0;
+
+                    --y;
+                }
+            }
+        }
+
 
         function getRandomInt(min, max) 
         {
-          min = Math.ceil(min);
-          max = Math.floor(max);
-          return Math.floor(Math.random() * (max - min)) + min;
+            min = Math.ceil(min);
+            max = Math.floor(max);
+            return Math.floor(Math.random() * (max - min)) + min;
         }        
 
         function initStats() {
@@ -417,33 +661,58 @@
             return stats;
         }
 
+        function onWindowResize() {
+
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize( window.innerWidth, window.innerHeight );
+        }        
+
         function onKeyDown( event ) 
         {
-            // if ( scope.enabled === false ) return;
-            // if ( scope.userPan === false ) return;
+            if (isGameOver) return;
 
-            switch ( event.keyCode ) {
-
+            switch ( event.keyCode ) 
+            {
                 case keys.UP:
-                    //scope.pan( new THREE.Vector3( 0, 1, 0 ) );
+                {
                     ctrlDir += 1;
                     ctrlDir %= 4;
-                    break;
-                case keys.BOTTOM:
-                    //scope.pan( new THREE.Vector3( 0, - 1, 0 ) );
-                    break;
+
+                    var rets = checkBlocks()
+                    if (rets.isLimit || rets.isBlock)
+                    {
+                        ctrlDir += 4;
+                        ctrlDir -= 1;
+                        ctrlDir %= 4;
+                    }
+                }
+                break;
+
+                case keys.BOTTOM:                
+                {
+                    var oldPos = new THREE.Vector3();
+                    oldPos.copy(ctrlPos);
+                    ctrlPos.y = Math.max(ctrlPos.y - 1, 0);
+
+                    var rets = checkBlocks()
+                    if (rets.isLimit || rets.isBlock)
+                        ctrlPos.copy(oldPos);
+                    else
+                        ctrlOldPos.copy(oldPos);
+                }
+                break;
+
                 case keys.LEFT:
                     ctrlPos.x -= 1;
-                    //scope.pan( new THREE.Vector3( - 1, 0, 0 ) );
                     break;
                 case keys.RIGHT:
                     ctrlPos.x += 1;
-                    //scope.pan( new THREE.Vector3( 1, 0, 0 ) );
                     break;
               }
         }
 
-        //this.domElement.addEventListener( 'keydown', onKeyDown, false );
+        window.addEventListener( 'resize', onWindowResize, false );
         document.addEventListener( 'keydown', onKeyDown, false );
     }
     window.onload = init;
