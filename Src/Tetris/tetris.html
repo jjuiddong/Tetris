@@ -404,6 +404,7 @@
                 if (incTime > 1)
                 {
                     incTime = 0;
+                    ctrlOldPos.copy(ctrlPos);
                     ctrlPos.y--;
                     isNextStep = true;
 
@@ -414,26 +415,32 @@
                     }
                 }
 
-                var rets = checkBlocks();
-                var isLimit = rets.isLimit;
-                var isBlock = rets.isBlock;
-
-                if (isLimit || isBlock)
+                if (isNextStep)
                 {
-                    ctrlPos.copy(ctrlOldPos);
+                    var rets = checkBlocks(ctrlPos);
+
+                    if (rets.isLimit || rets.isBlock)
+                    {
+                        ctrlPos.copy(ctrlOldPos);
+                    }
+                    else
+                    {
+                        ctrlOldPos.copy(ctrlPos);
+                    }
+
+                    updateBlocks();
+                    updateControlBlocks(false);
+
+                    if (isNextStep && rets.isBlock)
+                    {
+                        nextBlock();
+                    }
                 }
                 else
                 {
-                    ctrlOldPos.copy(ctrlPos);
+                    updateBlocks();
+                    updateControlBlocks(false);
                 }
-
-                updateBlocks();
-                updateControlBlocks(false);
-
-                if (isNextStep && isBlock)
-                {
-                    nextBlock();
-                }                
             }
 
             // render using requestAnimationFrame
@@ -463,7 +470,7 @@
         {
             updateControlBlocks(true);
             updateBlocks();
-            removeBlocks();
+            shiftBlocks();
 
             ctrlType = nextCtrlType;
             nextCtrlType = getRandomInt(0,4);            
@@ -472,7 +479,7 @@
 
             updateNextControlBlocks();
 
-            var rets = checkBlocks();
+            var rets = checkBlocks(ctrlPos);
             if (rets.isLimit || rets.isBlock)
             {
                 isGameOver = true;
@@ -481,15 +488,16 @@
 
 
         // check is possible control block mapping to blocks
+        // controlPos : control block pos
         // return isLimit?, isBlock?
         //      isLimit : move xy limit?
         //      isBlock : move another block location?
-        function checkBlocks()
+        function checkBlocks(controlPos)
         {
             var isStop = false;
             var isBlock = false;
-            var posX = ctrlPos.x; // control block pos
-            var posY = ctrlPos.y;
+            var posX = controlPos.x;
+            var posY = controlPos.y;
 
             for (var x=0; x<4 && !isStop; ++x)
             {
@@ -511,7 +519,7 @@
                             isStop = true;
                             isBlock = true;
                         }
-                        if (y - posY > 19)
+                        if (posY - y > 19)
                         {
                             isStop = true;
                         }
@@ -553,7 +561,7 @@
                         if ((x + posX < 0)
                             || (x + posX > 9)
                             || (posY - y < 0)
-                            || (y - posY > 19))
+                            || (posY - y > 19))
                         {
                             continue;
                         }
@@ -596,20 +604,20 @@
             {
                 for (var y=0; y<4; ++y)
                 {
-                    if (ctrlBlocks[nextCtrlType][0][3-y][x] != 0)
+                    if (ctrlBlocks[nextCtrlType][0][y][x] != 0)
                     {
-                        nextCubes[x][y].visible = true;
+                        nextCubes[x][3-y].visible = true;
                     }
                     else
                     {
-                        nextCubes[x][y].visible = false;
+                        nextCubes[x][3-y].visible = false;
                     }
                 }
             }
         }
 
         // remove block line
-        function removeBlocks()
+        function shiftBlocks()
         {
             for (var y=0; y < 20; ++y)
             {
@@ -679,7 +687,7 @@
                     ctrlDir += 1;
                     ctrlDir %= 4;
 
-                    var rets = checkBlocks()
+                    var rets = checkBlocks(ctrlPos)
                     if (rets.isLimit || rets.isBlock)
                     {
                         ctrlDir += 4;
@@ -689,25 +697,34 @@
                 }
                 break;
 
-                case keys.BOTTOM:                
-                {
-                    var oldPos = new THREE.Vector3();
-                    oldPos.copy(ctrlPos);
-                    ctrlPos.y = Math.max(ctrlPos.y - 1, 0);
-
-                    var rets = checkBlocks()
-                    if (rets.isLimit || rets.isBlock)
-                        ctrlPos.copy(oldPos);
-                    else
-                        ctrlOldPos.copy(oldPos);
-                }
-                break;
+                case keys.BOTTOM:
+                    if (ctrlPos.y > 0)
+                    {
+                        var rets = checkBlocks(new THREE.Vector2(ctrlPos.x, ctrlPos.y-1));
+                        if (!rets.isLimit && !rets.isBlock)
+                        {
+                            ctrlOldPos.copy(ctrlPos);
+                            ctrlPos.y -= 1;
+                        }
+                    }
+                    break;
 
                 case keys.LEFT:
-                    ctrlPos.x -= 1;
+                    var rets = checkBlocks(new THREE.Vector2(ctrlPos.x - 1, ctrlPos.y));
+                    if (!rets.isLimit && !rets.isBlock)
+                    {                        
+                        ctrlOldPos.copy(ctrlPos);
+                        ctrlPos.x -= 1;
+                    }
                     break;
+
                 case keys.RIGHT:
-                    ctrlPos.x += 1;
+                    var rets = checkBlocks(new THREE.Vector2(ctrlPos.x + 1, ctrlPos.y));
+                    if (!rets.isLimit && !rets.isBlock)
+                    {                        
+                        ctrlOldPos.copy(ctrlPos);
+                        ctrlPos.x += 1;
+                    }
                     break;
               }
         }
